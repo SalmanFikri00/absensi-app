@@ -1,0 +1,29 @@
+{
+  "name": "absensi-offline-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --bun next dev -H 0.0.0.0",
+    "build": "DB_PATH=/tmp/poshadir-build.db bun --bun next build",
+    "start": "bun --bun next start -H 0.0.0.0",
+    "start:standalone": "bun .next/standalone/server.js",
+    "sync:worker": "bun run worker/sync-worker.ts",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "bash scripts/test-smoke.sh"
+  },
+  "dependencies": {
+    "html5-qrcode": "2.3.8",
+    "lucide-react": "0.468.0",
+    "next": "15.5.29",
+    "qrcode.react": "4.2.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "22.15.30",
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.7",
+    "typescript": "5.8.3"
+  }
+}
