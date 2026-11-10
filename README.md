@@ -12,42 +12,67 @@ MVP absensi QR self-hosted untuk jaringan lokal/area tanpa internet. Aplikasi be
 - Worker sync terpisah yang mencoba setiap 15 detik, mengirim paling banyak 50 record, dan menandai hanya ID yang diterima oleh webhook.
 - Docker Compose untuk aplikasi + worker; TLS lokal Caddy tersedia sebagai profile opsional.
 
-## Jalankan di Orange Pi dengan Docker
+## Jalankan di Orange Pi (build lokal)
 
-Workflow GitHub Actions memeriksa tipe dan menjalankan smoke test, lalu membangun image multi-arsitektur (`linux/arm64` dan `linux/amd64`) dan menerbitkannya ke `ghcr.io/salmanfikri00/absensi-app`. Push ke `main` menghasilkan tag `latest` dan `sha-<commit>`; tag Git `v*` juga diterbitkan. Build berjalan di runner GitHub Actions—Orange Pi tidak perlu source code atau compiler.
+Image dibangun langsung di Orange Pi dari `Dockerfile`; alur ini tidak memerlukan GHCR. Gunakan OS 64-bit (`uname -m` harus menampilkan `aarch64`), Docker Engine, dan plugin Docker Compose. Untuk membangun pertama kali, board memerlukan koneksi internet agar Docker dapat mengambil base image dan Bun dapat mengunduh dependency. Hubungkan Orange Pi dan perangkat pengguna ke jaringan Wi-Fi/LAN yang sama.
 
-Package GHCR dibiarkan **private**. Sebelum pull pertama di Orange Pi, buat GitHub Personal Access Token classic dengan izin `read:packages`, lalu login ke GHCR (token diminta pada prompt password; jangan simpan di repository atau `.env`):
+Ambil source code di Orange Pi (atau salin folder repo ke sana), lalu masuk ke folder proyek. Jika memakai Git:
 
 ```bash
-docker login ghcr.io -u SalmanFikri00
+git clone https://github.com/SalmanFikri00/absensi-app.git
+cd absensi-app
+uname -m
+docker --version
+docker compose version
 ```
 
-Gunakan Orange Pi dengan Docker Engine dan Docker Compose plugin, tersambung ke jaringan Wi-Fi/LAN yang sama dengan ponsel petugas dan pekerja. Pastikan OS-nya 64-bit (`uname -m` menampilkan `aarch64`); dari folder yang berisi file Compose:
+Buat `.env`, lalu ganti PIN admin dan kedua secret sebelum menjalankan aplikasi. Buat secret yang berbeda dengan menjalankan `openssl rand -hex 32` dua kali, lalu salin hasilnya ke `ADMIN_SESSION_SECRET` dan `QR_SECRET`:
 
 ```bash
 cp .env.example .env
+openssl rand -hex 32
+openssl rand -hex 32
+nano .env
 ```
 
-Edit `.env` dan ganti `ADMIN_PIN`, `ADMIN_SESSION_SECRET`, dan `QR_SECRET` dengan nilai unik (gunakan secret acak yang panjang). Lalu tarik image dan jalankan:
+Atur nilai seperti berikut di `.env` (ganti contoh placeholder dan PIN dengan nilai pilihan sendiri):
+
+```dotenv
+ADMIN_PIN=PIN_BARU_4_SAMPAI_8_DIGIT
+ADMIN_SESSION_SECRET=SECRET_ACAK_PERTAMA
+QR_SECRET=SECRET_ACAK_KEDUA
+COOKIE_SECURE=false
+APP_PORT=3000
+```
+
+Build image lokal, lalu start aplikasi dan worker:
 
 ```bash
-docker compose pull
+docker compose build
 docker compose up -d
 docker compose ps
+docker compose logs -f web sync-worker
 ```
 
-Aplikasi tersedia pada `http://IP-ORANGE-PI:3000` (atau port `APP_PORT` jika diubah). Buka `/user` untuk pekerja dan `/admin` untuk petugas. Seed demo memakai ID pekerja `EMP-001` hingga `EMP-010` dengan PIN `1234`; PIN petugas mengikuti nilai `ADMIN_PIN` pada `.env` (nilai contoh `2468`). Ganti kredensial demo sebelum pemakaian nyata.
+Build awal di board bisa memakan waktu dan membutuhkan internet. Setelah aplikasi hidup, cari alamat IP Orange Pi dengan `hostname -I`, lalu buka `http://IP-ORANGE-PI:3000/user` untuk pekerja atau `http://IP-ORANGE-PI:3000/admin` untuk petugas. Ganti `3000` jika `APP_PORT` di `.env` diubah.
 
-SQLite berada di named volume `attendance-data` dan bertahan setelah container diperbarui. Jangan menghapus volume ketika melakukan rebuild. Periksa log dengan `docker compose logs -f web sync-worker`.
+Pada database baru, akun pekerja demo yang di-seed adalah `EMP-001` sampai `EMP-010`, semuanya memakai PIN `1234`. PIN admin adalah nilai `ADMIN_PIN` di `.env`; jika tidak diubah dari `.env.example`, nilainya `2468`. PIN pekerja di database disimpan sebagai hash. Mengubah PIN di `.env` tidak mereset akun pekerja yang sudah ada; kelola akun dan PIN pekerja melalui **Manajemen pengguna** di `/admin/users`.
 
-Untuk memperbarui ke image terbaru setelah workflow berhasil, jalankan `docker compose pull && docker compose up -d`. Image dapat dipatok ke versi/commit tertentu dengan mengatur `GHCR_IMAGE` (contoh: `ghcr.io/salmanfikri00/absensi-app:sha-<commit>`).
+SQLite berada di named volume `attendance-data` dan bertahan saat container diperbarui atau image dibangun ulang. **Jangan** gunakan `docker compose down -v` jika ingin mempertahankan data. Untuk memperbarui source yang sudah ada di board:
+
+```bash
+git pull
+docker compose build
+docker compose up -d
+```
+
+Periksa status dan log dengan `docker compose ps` serta `docker compose logs -f web sync-worker`.
 
 ### Kamera browser melalui HTTPS lokal
 
 Browser ponsel modern dapat menolak kamera pada alamat HTTP berbasis IP lokal, walaupun aplikasi tetap dapat dipakai. Untuk kamera, nama lokal `absensi.local` harus mengarah ke Orange Pi melalui mDNS/DNS lokal. Setelah nama perangkat/DNS lokal disiapkan, di `.env` set `COOKIE_SECURE=true`, lalu jalankan:
 
 ```bash
-docker compose --profile tls pull
 docker compose --profile tls up -d
 ```
 

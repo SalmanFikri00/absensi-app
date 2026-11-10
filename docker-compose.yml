@@ -1,7 +1,10 @@
 services:
   web:
-    image: ${GHCR_IMAGE:-ghcr.io/salmanfikri00/absensi-app:latest}
-    pull_policy: missing
+    image: poshadir:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    pull_policy: never
     restart: unless-stopped
     init: true
     ports:
@@ -32,8 +35,8 @@ services:
         max-file: "3"
 
   sync-worker:
-    image: ${GHCR_IMAGE:-ghcr.io/salmanfikri00/absensi-app:latest}
-    pull_policy: missing
+    image: poshadir:local
+    pull_policy: never
     restart: unless-stopped
     init: true
     command: ["bun", "run", "worker/sync-worker.ts"]
