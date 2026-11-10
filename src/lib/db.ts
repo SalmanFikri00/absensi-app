@@ -12,12 +12,17 @@ export type AttendanceRow = {
 };
 
 const filename = process.env.DB_PATH || path.join(process.cwd(), 'data', 'attendance.db');
-mkdirSync(path.dirname(filename), { recursive: true });
-const db = new Database(filename, { create: true, strict: true });
-db.exec(`
+let initializedDb: Database | undefined;
+
+function getDatabase(): Database {
+  if (initializedDb) return initializedDb;
+
+  mkdirSync(path.dirname(filename), { recursive: true });
+  const database = new Database(filename, { create: true, strict: true });
+  database.exec(`
+  PRAGMA busy_timeout = 5000;
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
-  PRAGMA busy_timeout = 5000;
   PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -49,10 +54,33 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_logs(check_in_date);
 `);
 
-// Add columns to databases created by earlier PosHadir builds without dropping records.
-const userColumns = new Set(db.query<{ name: string }>('PRAGMA table_info(users)').all().map((column) => column.name));
-if (!userColumns.has('pin_hash')) db.exec("ALTER TABLE users ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''");
-if (!userColumns.has('active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+  // Add columns to databases created by earlier PosHadir builds without dropping records.
+  const userColumns = new Set(database.query<{ name: string }>('PRAGMA table_info(users)').all().map((column) => column.name));
+  if (!userColumns.has('pin_hash')) database.exec("ALTER TABLE users ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''");
+  if (!userColumns.has('active')) database.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+
+  const insertWorker = database.query('INSERT OR IGNORE INTO users (id, name, division, pin) VALUES (?, ?, ?, ?)');
+  for (const worker of demoWorkers) insertWorker.run(worker.id, worker.name, worker.division, '1234');
+
+  // Hash legacy/demo PINs once, then remove their plaintext copies from the database.
+  const legacyCredentials = database.query<{ id: string; pin: string; pin_hash: string }>(
+    "SELECT id, pin, pin_hash FROM users WHERE pin_hash = ''",
+  ).all();
+  const saveCredential = database.query('UPDATE users SET pin = ?, pin_hash = ? WHERE id = ?');
+  for (const row of legacyCredentials) saveCredential.run('', hashPin(row.pin || '1234'), row.id);
+
+  initializedDb = database;
+  return database;
+}
+
+// Keep the existing query API while delaying all file and schema work until a request uses the DB.
+const db = new Proxy({} as Database, {
+  get(_target, property) {
+    const database = getDatabase();
+    const value = Reflect.get(database, property, database);
+    return typeof value === 'function' ? value.bind(database) : value;
+  },
+});
 
 function hashPin(pin: string) {
   const salt = randomBytes(16).toString('hex');
@@ -78,15 +106,6 @@ const demoWorkers: Worker[] = [
   { id: 'EMP-009', name: 'Dimas Saputra', division: 'Operasional' },
   { id: 'EMP-010', name: 'Lina Kartika', division: 'Logistik' },
 ];
-const insertWorker = db.query('INSERT OR IGNORE INTO users (id, name, division, pin) VALUES (?, ?, ?, ?)');
-for (const worker of demoWorkers) insertWorker.run(worker.id, worker.name, worker.division, '1234');
-
-// Hash legacy/demo PINs once, then remove their plaintext copies from the database.
-const legacyCredentials = db.query<{ id: string; pin: string; pin_hash: string }>(
-  "SELECT id, pin, pin_hash FROM users WHERE pin_hash = ''",
-).all();
-const saveCredential = db.query('UPDATE users SET pin = ?, pin_hash = ? WHERE id = ?');
-for (const row of legacyCredentials) saveCredential.run('', hashPin(row.pin || '1234'), row.id);
 
 export function listWorkers(): Worker[] {
   return db.query<Worker>('SELECT id, name, division FROM users WHERE active = 1 ORDER BY name').all();
