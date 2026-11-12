@@ -22,3 +22,9 @@
 @media(max-width:390px){.account-chip{max-width:100px}.portal-nav-right{gap:5px}.portal-logout{gap:4px}.user-summary-secure{display:none}}
 
 .mobile-admin-nav{display:none}@media(max-width:760px){.mobile-admin-nav{display:flex;gap:5px;padding:8px 14px;border-bottom:1px solid #e3e7df;background:#fff}.mobile-admin-nav a{display:flex;align-items:center;justify-content:center;gap:6px;flex:1;min-height:33px;border-radius:8px;color:#879189;font-size:9px;font-weight:750}.mobile-admin-nav a.active{background:#eef5e2;color:#5f823b}}
+
+/* QR scan legibility: larger worker code and a scan frame that tracks the adaptive camera crop. */
+.qr-box{width:min(292px,100%);height:auto;aspect-ratio:1;padding:10px}
+.qr-box svg{display:block;width:100%!important;height:auto!important;max-width:100%}
+.scanner-overlay{width:min(80%,320px);height:auto;aspect-ratio:1}
+@media(max-width:760px){.qr-box{width:min(282px,100%);height:auto;aspect-ratio:1;padding:10px}}
